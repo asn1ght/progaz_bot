@@ -20,6 +20,10 @@ class UserRepository:
         await self.session.refresh(user)
         return user
 
+    async def list_admins(self) -> list[User]:
+        result = await self.session.execute(select(User).where(User.role == "admin", User.is_active.is_(True)))
+        return list(result.scalars().all())
+
     async def update_role(self, user: User, role: str) -> User:
         user.role = role
         user.is_active = True

@@ -5,11 +5,17 @@ from aiogram import executor
 from app.database.session import init_db
 from app.handlers import register_handlers
 from app.loader import dp
+from app.scheduler.setup import setup_scheduler
 from loguru import logger
+
+_scheduler = None
 
 
 async def on_startup(_dispatcher) -> None:
+    global _scheduler
     await init_db()
+    if _scheduler is None:
+        _scheduler = setup_scheduler()
     logger.info("Bot startup completed")
 
 

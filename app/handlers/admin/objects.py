@@ -10,11 +10,24 @@ from app.database.session import AsyncSessionFactory
 from app.keyboards.admin.menu import get_admin_reply_keyboard
 from app.keyboards.admin.objects import get_object_menu_keyboard
 from app.services.object_service import ObjectService
+from app.services.user_service import UserService
 from app.states.object import ObjectStates
+from app.utils.admin import is_admin_user_for_role
+
+
+async def _is_admin_user(message: types.Message) -> bool:
+    if message.from_user is None:
+        return False
+
+    async with AsyncSessionFactory() as session:
+        service = UserService(session)
+        user = await service.get_user_by_telegram_id(message.from_user.id)
+
+    return is_admin_user_for_role(user.role if user else None, message.from_user.id, settings.ADMIN_ID)
 
 
 async def show_object_menu(message: types.Message) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if not await _is_admin_user(message):
         return
 
     await message.answer(
@@ -28,7 +41,7 @@ async def show_object_menu(message: types.Message) -> None:
 
 
 async def list_objects(message: types.Message) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if not await _is_admin_user(message):
         return
 
     async with AsyncSessionFactory() as session:
@@ -47,7 +60,7 @@ async def list_objects(message: types.Message) -> None:
 
 
 async def start_add_object(message: types.Message, state: FSMContext) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if not await _is_admin_user(message):
         return
 
     await state.set_state(ObjectStates.waiting_name)
@@ -153,7 +166,7 @@ async def add_object_comment(message: types.Message, state: FSMContext) -> None:
 
 
 async def start_edit_object(message: types.Message, state: FSMContext) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if not await _is_admin_user(message):
         return
 
     await state.set_state(ObjectStates.waiting_edit_object_id)
@@ -293,7 +306,7 @@ async def edit_object_comment(message: types.Message, state: FSMContext) -> None
 
 
 async def start_delete_object(message: types.Message, state: FSMContext) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if not await _is_admin_user(message):
         return
 
     await state.set_state(ObjectStates.waiting_delete_object_id)
@@ -326,7 +339,7 @@ async def delete_object(message: types.Message, state: FSMContext) -> None:
 
 
 async def back_to_admin_menu(message: types.Message) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if not await _is_admin_user(message):
         return
 
     await message.answer("Главное административное меню", reply_markup=get_admin_reply_keyboard())

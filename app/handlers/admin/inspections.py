@@ -12,11 +12,24 @@ from app.keyboards.admin.inspections import get_inspection_menu_keyboard
 from app.keyboards.admin.menu import get_admin_reply_keyboard
 from app.services.inspection_service import InspectionService
 from app.services.object_service import ObjectService
+from app.services.user_service import UserService
 from app.states.inspection import InspectionStates
+from app.utils.admin import is_admin_user_for_role
+
+
+async def _is_admin_user(message: types.Message) -> bool:
+    if message.from_user is None:
+        return False
+
+    async with AsyncSessionFactory() as session:
+        service = UserService(session)
+        user = await service.get_user_by_telegram_id(message.from_user.id)
+
+    return is_admin_user_for_role(user.role if user else None, message.from_user.id, settings.ADMIN_ID)
 
 
 async def show_inspection_menu(message: types.Message) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if not await _is_admin_user(message):
         return
 
     await message.answer(
@@ -28,7 +41,7 @@ async def show_inspection_menu(message: types.Message) -> None:
 
 
 async def list_inspections(message: types.Message) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if not await _is_admin_user(message):
         return
 
     async with AsyncSessionFactory() as session:
@@ -48,7 +61,7 @@ async def list_inspections(message: types.Message) -> None:
 
 
 async def start_create_inspection(message: types.Message, state: FSMContext) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if not await _is_admin_user(message):
         return
 
     await state.set_state(InspectionStates.waiting_object_id)
@@ -117,7 +130,7 @@ async def create_inspection_engineer_id(message: types.Message, state: FSMContex
 
 
 async def back_to_admin_menu(message: types.Message) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if not await _is_admin_user(message):
         return
 
     await message.answer("Главное административное меню", reply_markup=get_admin_reply_keyboard())

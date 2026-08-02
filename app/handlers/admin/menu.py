@@ -4,7 +4,10 @@ from aiogram import types
 from aiogram.dispatcher import Dispatcher
 
 from app.config import settings
+from app.database.session import AsyncSessionFactory
 from app.keyboards.admin.menu import get_admin_reply_keyboard
+from app.services.user_service import UserService
+from app.utils.admin import is_admin_user_for_role
 
 MENU_TITLES = {
     "📦 Объекты": "Объекты",
@@ -15,7 +18,14 @@ MENU_TITLES = {
 
 
 async def admin_menu_command(message: types.Message) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if message.from_user is None:
+        return
+
+    async with AsyncSessionFactory() as session:
+        service = UserService(session)
+        user = await service.get_user_by_telegram_id(message.from_user.id)
+
+    if not is_admin_user_for_role(user.role if user else None, message.from_user.id, settings.ADMIN_ID):
         await message.answer("Доступ к административному меню ограничен.")
         return
 
@@ -26,7 +36,14 @@ async def admin_menu_command(message: types.Message) -> None:
 
 
 async def admin_menu_text_handler(message: types.Message) -> None:
-    if message.from_user is None or message.from_user.id != settings.ADMIN_ID:
+    if message.from_user is None:
+        return
+
+    async with AsyncSessionFactory() as session:
+        service = UserService(session)
+        user = await service.get_user_by_telegram_id(message.from_user.id)
+
+    if not is_admin_user_for_role(user.role if user else None, message.from_user.id, settings.ADMIN_ID):
         return
 
     section = message.text or ""

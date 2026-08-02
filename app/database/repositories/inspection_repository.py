@@ -28,3 +28,8 @@ class InspectionRepository:
     async def get_by_id(self, inspection_id: int) -> Inspection | None:
         result = await self.session.execute(select(Inspection).where(Inspection.id == inspection_id))
         return result.scalar_one_or_none()
+
+    async def update(self, inspection: Inspection) -> Inspection:
+        await self.session.commit()
+        await self.session.refresh(inspection)
+        return inspection
