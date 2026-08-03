@@ -8,6 +8,7 @@ from app.config import settings
 from app.database.session import AsyncSessionFactory
 from app.keyboards.admin.menu import get_admin_reply_keyboard
 from app.keyboards.admin.registration import get_registration_review_keyboard
+from app.keyboards.engineer.menu import get_engineer_reply_keyboard
 from app.services.user_service import UserService
 from app.states.registration import RegistrationStates
 
@@ -31,6 +32,11 @@ async def start_command(message: types.Message, state: FSMContext) -> None:
                 await message.answer(
                     "Здравствуйте! Вы уже зарегистрированы в боте как администратор.",
                     reply_markup=get_admin_reply_keyboard(),
+                )
+            elif user.role == "engineer":
+                await message.answer(
+                    "Здравствуйте! Вы уже зарегистрированы в боте как инженер.",
+                    reply_markup=get_engineer_reply_keyboard(),
                 )
             else:
                 await message.answer(

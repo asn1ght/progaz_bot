@@ -10,6 +10,16 @@ from app.keyboards.engineer.menu import get_engineer_reply_keyboard
 from app.services.user_service import UserService
 from app.config import settings
 from app.utils.admin import is_admin_user_for_role
+from app.utils.engineer import matches_engineer_assignment
+
+
+async def _get_current_user(message: types.Message):
+    if message.from_user is None:
+        return None
+
+    async with AsyncSessionFactory() as session:
+        service = UserService(session)
+        return await service.get_user_by_telegram_id(message.from_user.id)
 
 
 async def _is_engineer_user(message: types.Message) -> bool:
@@ -27,12 +37,13 @@ async def show_history(message: types.Message) -> None:
     if not await _is_engineer_user(message):
         return
 
+    user = await _get_current_user(message)
     async with AsyncSessionFactory() as session:
         from app.database.repositories.inspection_repository import InspectionRepository
         inspection_repository = InspectionRepository(session)
         inspections = await inspection_repository.list_by_date(date.today())
 
-    relevant = [insp for insp in inspections if insp.engineer_id == message.from_user.id]
+    relevant = [insp for insp in inspections if matches_engineer_assignment(user.id if user else None, insp.engineer_id)]
     if not relevant:
         await message.answer("История проверок пуста.", reply_markup=get_engineer_reply_keyboard())
         return

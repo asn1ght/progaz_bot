@@ -14,18 +14,22 @@ from app.services.object_service import ObjectService
 from app.services.user_service import UserService
 from app.states.engineer import EngineerStates
 from app.utils.admin import is_admin_user_for_role
+from app.utils.engineer import matches_engineer_assignment
 from app.config import settings
 
 
-async def _is_engineer_user(message: types.Message) -> bool:
+async def _get_current_user(message: types.Message):
     if message.from_user is None:
-        return False
+        return None
 
     async with AsyncSessionFactory() as session:
         service = UserService(session)
-        user = await service.get_user_by_telegram_id(message.from_user.id)
+        return await service.get_user_by_telegram_id(message.from_user.id)
 
-    return bool(user and user.role == "engineer") or is_admin_user_for_role(user.role if user else None, message.from_user.id, settings.ADMIN_ID)
+
+async def _is_engineer_user(message: types.Message) -> bool:
+    user = await _get_current_user(message)
+    return bool(user and user.role == "engineer") or is_admin_user_for_role(user.role if user else None, message.from_user.id, settings.ADMIN_ID) if message.from_user is not None else False
 
 
 async def engineer_menu(message: types.Message) -> None:
@@ -42,11 +46,12 @@ async def show_my_objects(message: types.Message) -> None:
     if not await _is_engineer_user(message):
         return
 
+    user = await _get_current_user(message)
     async with AsyncSessionFactory() as session:
         object_service = ObjectService(session)
         objects = await object_service.list_objects()
 
-    engineer_objects = [obj for obj in objects if obj.engineer_id == message.from_user.id]
+    engineer_objects = [obj for obj in objects if matches_engineer_assignment(user.id if user else None, obj.engineer_id)]
     if not engineer_objects:
         await message.answer("У вас нет назначенных объектов.", reply_markup=get_engineer_reply_keyboard())
         return
@@ -59,13 +64,14 @@ async def show_today_inspections(message: types.Message) -> None:
     if not await _is_engineer_user(message):
         return
 
+    user = await _get_current_user(message)
     today = date.today()
     async with AsyncSessionFactory() as session:
         from app.database.repositories.inspection_repository import InspectionRepository
         inspection_repository = InspectionRepository(session)
         inspections = await inspection_repository.list_by_date(today)
 
-    relevant = [insp for insp in inspections if insp.engineer_id == message.from_user.id and insp.planned_date == today]
+    relevant = [insp for insp in inspections if matches_engineer_assignment(user.id if user else None, insp.engineer_id) and insp.planned_date == today]
     if not relevant:
         await message.answer("Сегодня нет выездов.", reply_markup=get_engineer_reply_keyboard())
         return
@@ -91,13 +97,14 @@ async def show_tomorrow_inspections(message: types.Message) -> None:
     if not await _is_engineer_user(message):
         return
 
+    user = await _get_current_user(message)
     tomorrow = date.today() + timedelta(days=1)
     async with AsyncSessionFactory() as session:
         from app.database.repositories.inspection_repository import InspectionRepository
         inspection_repository = InspectionRepository(session)
         inspections = await inspection_repository.list_by_date(tomorrow)
 
-    relevant = [insp for insp in inspections if insp.engineer_id == message.from_user.id and insp.planned_date == tomorrow]
+    relevant = [insp for insp in inspections if matches_engineer_assignment(user.id if user else None, insp.engineer_id) and insp.planned_date == tomorrow]
     if not relevant:
         await message.answer("Завтра нет выездов.", reply_markup=get_engineer_reply_keyboard())
         return
@@ -150,6 +157,7 @@ async def complete_inspection(message: types.Message, state: FSMContext) -> None
         await message.answer("Введите текст комментария.")
         return
 
+    user = await _get_current_user(message)
     data = await state.get_data()
     inspection_id = data.get("inspection_id")
 
@@ -158,20 +166,16 @@ async def complete_inspection(message: types.Message, state: FSMContext) -> None
         inspection_repository = InspectionRepository(session)
         inspection = await inspection_repository.get_by_id(inspection_id) if inspection_id is not None else None
 
-    if inspection is None or inspection.engineer_id != message.from_user.id:
-        await message.answer("Выезд не найден или не принадлежит вам.")
-        await state.finish()
-        return
+        if inspection is None or not matches_engineer_assignment(user.id if user else None, inspection.engineer_id):
+            await message.answer("Выезд не найден или не принадлежит вам.")
+            await state.finish()
+            return
 
-    inspection.comment = message.text
-    inspection.status = "completed"
-    async with AsyncSessionFactory() as session:
-        from app.database.repositories.inspection_repository import InspectionRepository
-        inspection_repository = InspectionRepository(session)
+        inspection.comment = message.text
+        inspection.status = "completed"
         await inspection_repository.update(inspection)
 
-    await state.finish()
-    async with AsyncSessionFactory() as session:
+        await state.finish()
         user_repository = UserRepository(session)
         admins = await user_repository.list_admins()
         for admin in admins:

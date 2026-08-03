@@ -30,6 +30,7 @@ class InspectionRepository:
         return result.scalar_one_or_none()
 
     async def update(self, inspection: Inspection) -> Inspection:
+        self.session.add(inspection)
         await self.session.commit()
         await self.session.refresh(inspection)
         return inspection
