@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from datetime import date, timedelta
 
 from app.database.models import Inspection, Object, ScheduleChange
@@ -9,12 +10,19 @@ class InspectionService:
     @staticmethod
     def calculate_next_date(monthly_day: int, base_date: date | None = None) -> date:
         today = base_date or date.today()
-        candidate = today.replace(day=monthly_day)
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        day = min(monthly_day, last_day)
+        candidate = today.replace(day=day)
         if candidate < today:
             if today.month == 12:
-                candidate = candidate.replace(year=today.year + 1, month=1)
+                candidate = candidate.replace(year=today.year + 1, month=1, day=min(monthly_day, calendar.monthrange(today.year + 1, 1)[1]))
             else:
-                candidate = candidate.replace(month=today.month + 1)
+                next_month = today.month + 1
+                next_year = today.year
+                if next_month > 12:
+                    next_month = 1
+                    next_year += 1
+                candidate = candidate.replace(year=next_year, month=next_month, day=min(monthly_day, calendar.monthrange(next_year, next_month)[1]))
         return InspectionService._move_weekend_to_monday(candidate)
 
     @staticmethod

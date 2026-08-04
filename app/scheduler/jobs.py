@@ -32,6 +32,10 @@ async def run_daily_checks() -> None:
             if not obj.engineer_id:
                 continue
 
+            existing_planned = await inspection_repository.get_planned_for_object(obj.id)
+            if existing_planned is not None:
+                continue
+
             effective_day = InspectionService.get_effective_schedule_day(obj, today)
             if effective_day == today.day:
                 planned_date = InspectionService.calculate_next_date(effective_day, base_date=today)

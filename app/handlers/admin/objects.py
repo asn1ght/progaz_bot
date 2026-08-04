@@ -10,7 +10,6 @@ from app.database.session import AsyncSessionFactory
 from app.keyboards.admin.menu import get_admin_reply_keyboard
 from app.keyboards.admin.objects import get_object_menu_keyboard
 from app.services.object_service import ObjectService
-from app.services.schedule_change_service import ScheduleChangeService
 from app.services.user_service import UserService
 from app.states.object import ObjectStates
 from app.utils.admin import is_admin_user_for_role
@@ -339,85 +338,6 @@ async def delete_object(message: types.Message, state: FSMContext) -> None:
     await state.finish()
 
 
-async def start_schedule_change(message: types.Message, state: FSMContext) -> None:
-    if not await _is_admin_user(message):
-        return
-
-    await state.set_state(ObjectStates.waiting_schedule_object_id)
-    await message.answer("Введите ID объекта для переноса даты.", reply_markup=get_object_menu_keyboard())
-
-
-async def schedule_change_object_id(message: types.Message, state: FSMContext) -> None:
-    if not message.text:
-        await message.answer("Введите корректный ID объекта.")
-        return
-
-    try:
-        object_id = int(message.text)
-    except ValueError:
-        await message.answer("ID объекта должен быть числом.")
-        return
-
-    async with AsyncSessionFactory() as session:
-        service = ObjectService(session)
-        obj = await service.get_object_by_id(object_id)
-
-    if obj is None:
-        await message.answer("Объект не найден.", reply_markup=get_object_menu_keyboard())
-        await state.finish()
-        return
-
-    await state.update_data(object_id=object_id)
-    await state.set_state(ObjectStates.waiting_schedule_new_day)
-    await message.answer("Введите новый день месяца для проверки (1-31).")
-
-
-async def schedule_change_new_day(message: types.Message, state: FSMContext) -> None:
-    if not message.text:
-        await message.answer("Введите корректный день месяца.")
-        return
-
-    try:
-        new_day = int(message.text)
-    except ValueError:
-        await message.answer("День должен быть числом.")
-        return
-
-    if not 1 <= new_day <= 31:
-        await message.answer("День должен быть в диапазоне 1-31.")
-        return
-
-    await state.update_data(new_day=new_day)
-    await state.set_state(ObjectStates.waiting_schedule_mode)
-    await message.answer("Выберите вариант переноса:\n1. Только на этот месяц\n2. Постоянно", reply_markup=get_object_menu_keyboard())
-
-
-async def schedule_change_mode(message: types.Message, state: FSMContext) -> None:
-    if not message.text:
-        await message.answer("Введите 1 или 2.")
-        return
-
-    data = await state.get_data()
-    try:
-        new_day = int(data["new_day"])
-        object_id = int(data["object_id"])
-    except (KeyError, ValueError):
-        await message.answer("Сначала задайте объект и день.")
-        return
-
-    mode = message.text.strip()
-    async with AsyncSessionFactory() as session:
-        service = ScheduleChangeService(session)
-        if mode in {"1", "только на этот месяц", "этот месяц"}:
-            await service.create_temporary_change(object_id, new_day)
-            await message.answer("Дата перенесена только на этот месяц.", reply_markup=get_object_menu_keyboard())
-        else:
-            await service.create_permanent_change(object_id, new_day)
-            await message.answer("Дата перенесена постоянно.", reply_markup=get_object_menu_keyboard())
-
-    await state.finish()
-
-
 async def back_to_admin_menu(message: types.Message) -> None:
     if not await _is_admin_user(message):
         return
@@ -447,10 +367,5 @@ def register_object_handlers(dp: Dispatcher) -> None:
 
     dp.register_message_handler(start_delete_object, text=["🗑 Удалить объект"], state="*")
     dp.register_message_handler(delete_object, state=ObjectStates.waiting_delete_object_id)
-
-    dp.register_message_handler(start_schedule_change, text=["🔁 Перенос дат"], state="*")
-    dp.register_message_handler(schedule_change_object_id, state=ObjectStates.waiting_schedule_object_id)
-    dp.register_message_handler(schedule_change_new_day, state=ObjectStates.waiting_schedule_new_day)
-    dp.register_message_handler(schedule_change_mode, state=ObjectStates.waiting_schedule_mode)
 
     dp.register_message_handler(back_to_admin_menu, text=["⬅️ Назад"], state="*")

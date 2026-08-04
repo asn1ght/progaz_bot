@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import calendar
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Inspection
@@ -27,6 +28,28 @@ class InspectionRepository:
 
     async def get_by_id(self, inspection_id: int) -> Inspection | None:
         result = await self.session.execute(select(Inspection).where(Inspection.id == inspection_id))
+        return result.scalar_one_or_none()
+
+    async def get_planned_for_object(self, object_id: int) -> Inspection | None:
+        result = await self.session.execute(
+            select(Inspection)
+            .where(Inspection.object_id == object_id, Inspection.status == "planned")
+            .order_by(Inspection.planned_date)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_planned_for_object_in_month(self, object_id: int, year: int, month: int) -> Inspection | None:
+        last_day = calendar.monthrange(year, month)[1]
+        result = await self.session.execute(
+            select(Inspection)
+            .where(
+                Inspection.object_id == object_id,
+                Inspection.status == "planned",
+                Inspection.planned_date >= date(year, month, 1),
+                Inspection.planned_date <= date(year, month, last_day),
+            )
+            .order_by(Inspection.planned_date)
+        )
         return result.scalar_one_or_none()
 
     async def update(self, inspection: Inspection) -> Inspection:
