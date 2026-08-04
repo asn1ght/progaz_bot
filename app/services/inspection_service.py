@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.database.models import Inspection, Object
+from app.database.models import Inspection, Object, ScheduleChange
 
 
 class InspectionService:
@@ -16,6 +16,18 @@ class InspectionService:
             else:
                 candidate = candidate.replace(month=today.month + 1)
         return InspectionService._move_weekend_to_monday(candidate)
+
+    @staticmethod
+    def get_effective_schedule_day(object_: Object, base_date: date | None = None) -> int:
+        today = base_date or date.today()
+        relevant_changes = [
+            change
+            for change in getattr(object_, "schedule_changes", [])
+            if change.new_date.year == today.year and change.new_date.month == today.month
+        ]
+        if relevant_changes:
+            return relevant_changes[-1].new_date.day
+        return object_.monthly_day
 
     @staticmethod
     def _move_weekend_to_monday(day: date) -> date:

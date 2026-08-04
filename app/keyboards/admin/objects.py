@@ -13,5 +13,6 @@ def get_object_menu_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton("✏️ Изменить объект"),
         KeyboardButton("🗑 Удалить объект"),
     )
+    keyboard.row(KeyboardButton("🔁 Перенос дат"))
     keyboard.row(KeyboardButton("⬅️ Назад"))
     return keyboard

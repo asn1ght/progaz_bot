@@ -71,7 +71,13 @@ async def show_today_inspections(message: types.Message) -> None:
         inspection_repository = InspectionRepository(session)
         inspections = await inspection_repository.list_by_date(today)
 
-    relevant = [insp for insp in inspections if matches_engineer_assignment(user.id if user else None, insp.engineer_id) and insp.planned_date == today]
+    relevant = [
+        insp
+        for insp in inspections
+        if matches_engineer_assignment(user.id if user else None, insp.engineer_id)
+        and insp.planned_date == today
+        and insp.status != "completed"
+    ]
     if not relevant:
         await message.answer("Сегодня нет выездов.", reply_markup=get_engineer_reply_keyboard())
         return
@@ -104,7 +110,13 @@ async def show_tomorrow_inspections(message: types.Message) -> None:
         inspection_repository = InspectionRepository(session)
         inspections = await inspection_repository.list_by_date(tomorrow)
 
-    relevant = [insp for insp in inspections if matches_engineer_assignment(user.id if user else None, insp.engineer_id) and insp.planned_date == tomorrow]
+    relevant = [
+        insp
+        for insp in inspections
+        if matches_engineer_assignment(user.id if user else None, insp.engineer_id)
+        and insp.planned_date == tomorrow
+        and insp.status != "completed"
+    ]
     if not relevant:
         await message.answer("Завтра нет выездов.", reply_markup=get_engineer_reply_keyboard())
         return

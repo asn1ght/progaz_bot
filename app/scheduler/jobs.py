@@ -32,8 +32,9 @@ async def run_daily_checks() -> None:
             if not obj.engineer_id:
                 continue
 
-            if obj.monthly_day == today.day:
-                planned_date = InspectionService.calculate_next_date(obj.monthly_day, base_date=today)
+            effective_day = InspectionService.get_effective_schedule_day(obj, today)
+            if effective_day == today.day:
+                planned_date = InspectionService.calculate_next_date(effective_day, base_date=today)
                 inspection = InspectionService.build_inspection(obj, obj.engineer_id, planned_date)
                 await inspection_repository.create(inspection)
 

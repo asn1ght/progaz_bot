@@ -43,7 +43,11 @@ async def show_history(message: types.Message) -> None:
         inspection_repository = InspectionRepository(session)
         inspections = await inspection_repository.list_by_date(date.today())
 
-    relevant = [insp for insp in inspections if matches_engineer_assignment(user.id if user else None, insp.engineer_id)]
+    relevant = [
+        insp
+        for insp in inspections
+        if matches_engineer_assignment(user.id if user else None, insp.engineer_id)
+    ]
     if not relevant:
         await message.answer("История проверок пуста.", reply_markup=get_engineer_reply_keyboard())
         return

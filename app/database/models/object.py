@@ -31,3 +31,4 @@ class Object(Base):
     )
 
     engineer: Mapped["User"] = relationship(foreign_keys=[engineer_id])
+    schedule_changes: Mapped[list["ScheduleChange"]] = relationship(back_populates="object", cascade="all, delete-orphan")

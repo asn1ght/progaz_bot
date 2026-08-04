@@ -19,3 +19,7 @@ class ObjectStates(StatesGroup):
     waiting_new_monthly_day = State()
     waiting_new_invoice_amount = State()
     waiting_new_comment = State()
+
+    waiting_schedule_object_id = State()
+    waiting_schedule_new_day = State()
+    waiting_schedule_mode = State()
