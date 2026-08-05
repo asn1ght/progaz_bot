@@ -32,14 +32,6 @@ async def _is_engineer_user(message: types.Message) -> bool:
     return bool(user and user.role == "engineer") or is_admin_user_for_role(user.role if user else None, message.from_user.id, settings.ADMIN_ID) if message.from_user is not None else False
 
 
-async def engineer_menu(message: types.Message) -> None:
-    if not await _is_engineer_user(message):
-        return
-
-    await message.answer(
-        "Кабинет инженера",
-        reply_markup=get_engineer_reply_keyboard(),
-    )
 
 
 async def show_my_objects(message: types.Message) -> None:
@@ -47,17 +39,42 @@ async def show_my_objects(message: types.Message) -> None:
         return
 
     user = await _get_current_user(message)
-    async with AsyncSessionFactory() as session:
-        object_service = ObjectService(session)
-        objects = await object_service.list_objects()
-
-    engineer_objects = [obj for obj in objects if matches_engineer_assignment(user.id if user else None, obj.engineer_id)]
-    if not engineer_objects:
-        await message.answer("У вас нет назначенных объектов.", reply_markup=get_engineer_reply_keyboard())
+    if user is None:
         return
 
-    lines = [f"{obj.name} | {obj.address} | день проверки: {obj.monthly_day}" for obj in engineer_objects]
-    await message.answer("\n".join(lines), reply_markup=get_engineer_reply_keyboard())
+    async with AsyncSessionFactory() as session:
+        object_service = ObjectService(session)
+        objects = await object_service.list_objects_by_engineer(user.id)
+
+        if not objects:
+            await message.answer(
+                "📭 <b>У вас пока нет назначенных объектов.</b>\n\n"
+                "Обратитесь к администратору для назначения.",
+                reply_markup=get_engineer_reply_keyboard(),
+                parse_mode="HTML",
+            )
+            return
+
+        from app.database.repositories.inspection_repository import InspectionRepository
+        inspection_repository = InspectionRepository(session)
+        planned_map = await inspection_repository.get_nearest_planned_for_objects([obj.id for obj in objects])
+
+    lines = [f"📋 <b>Ваши объекты</b> ({len(objects)} шт.)\n"]
+    for i, obj in enumerate(objects, 1):
+        planned = planned_map.get(obj.id)
+        next_date_str = (
+            f"📅 <i>{planned.planned_date.strftime('%d.%m.%Y')}</i>"
+            if planned
+            else "⏳ не запланирована"
+        )
+        lines.append(
+            f"<b>{i}. {obj.name}</b>\n"
+            f"   📍 {obj.address}\n"
+            f"   🔢 День проверки: <b>{obj.monthly_day}</b>\n"
+            f"   {next_date_str}"
+        )
+
+    await message.answer("\n".join(lines), reply_markup=get_engineer_reply_keyboard(), parse_mode="HTML")
 
 
 async def show_today_inspections(message: types.Message) -> None:
@@ -200,7 +217,6 @@ async def complete_inspection(message: types.Message, state: FSMContext) -> None
 
 
 def register_engineer_handlers(dp: Dispatcher) -> None:
-    dp.register_message_handler(engineer_menu, text=["🧭 Мои объекты"], state="*")
     dp.register_message_handler(show_my_objects, text=["🧭 Мои объекты"], state="*")
     dp.register_message_handler(show_today_inspections, text=["📅 Сегодня"], state="*")
     dp.register_message_handler(show_tomorrow_inspections, text=["📅 Завтра"], state="*")

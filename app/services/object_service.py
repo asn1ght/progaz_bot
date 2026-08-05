@@ -37,6 +37,9 @@ class ObjectService:
     async def list_objects(self) -> list[Object]:
         return await self.repository.list_active()
 
+    async def list_objects_by_engineer(self, engineer_id: int) -> list[Object]:
+        return await self.repository.list_by_engineer_id(engineer_id)
+
     async def get_object_by_id(self, object_id: int) -> Object | None:
         return await self.repository.get_by_id(object_id)
 

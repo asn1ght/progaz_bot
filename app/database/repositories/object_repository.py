@@ -24,6 +24,14 @@ class ObjectRepository:
         )
         return list(result.scalars().all())
 
+    async def list_by_engineer_id(self, engineer_id: int) -> list[Object]:
+        result = await self.session.execute(
+            select(Object)
+            .where(Object.is_active.is_(True), Object.engineer_id == engineer_id)
+            .order_by(Object.id)
+        )
+        return list(result.scalars().all())
+
     async def get_by_id(self, object_id: int) -> Object | None:
         result = await self.session.execute(
             select(Object).where(Object.id == object_id, Object.is_active.is_(True))
