@@ -59,6 +59,6 @@ def register_admin_menu_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(admin_menu_command, commands=["admin"], state="*")
     dp.register_message_handler(
         admin_menu_text_handler,
-        text=[" Проверки", "🧾 Счета", "👥 Пользователи"],
+        text=[" Проверки", "👥 Пользователи"],
         state="*",
     )

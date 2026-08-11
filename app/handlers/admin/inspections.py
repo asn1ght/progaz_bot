@@ -114,12 +114,26 @@ async def create_inspection_engineer_id(message: types.Message, state: FSMContex
         await state.finish()
         return
 
-    planned_date = InspectionService.calculate_next_date(obj.monthly_day)
-    inspection = InspectionService.build_inspection(obj, engineer_id, planned_date)
+    from app.database.repositories.inspection_repository import InspectionRepository
 
     async with AsyncSessionFactory() as session:
-        from app.database.repositories.inspection_repository import InspectionRepository
         repository = InspectionRepository(session)
+        today = datetime.utcnow().date()
+        already_planned = await repository.get_planned_for_object_in_month(
+            data["object_id"], today.year, today.month
+        )
+        if already_planned is not None:
+            await message.answer(
+                f"На этот объект уже создана плановая проверка #{already_planned.id} "
+                f"на {already_planned.planned_date} в текущем месяце.\n"
+                "Создание дублирующей проверки запрещено.",
+                reply_markup=get_inspection_menu_keyboard(),
+            )
+            await state.finish()
+            return
+
+        planned_date = InspectionService.calculate_next_date(obj.monthly_day)
+        inspection = InspectionService.build_inspection(obj, engineer_id, planned_date)
         await repository.create(inspection)
 
     await state.finish()

@@ -6,6 +6,7 @@ from loguru import logger
 
 from app.config import settings
 from app.database.session import AsyncSessionFactory
+from app.keyboards.accountant.menu import get_accountant_reply_keyboard
 from app.keyboards.admin.menu import get_admin_reply_keyboard
 from app.keyboards.admin.registration import get_registration_review_keyboard
 from app.keyboards.engineer.menu import get_engineer_reply_keyboard
@@ -37,6 +38,11 @@ async def start_command(message: types.Message, state: FSMContext) -> None:
                 await message.answer(
                     "Здравствуйте! Вы уже зарегистрированы в боте как инженер.",
                     reply_markup=get_engineer_reply_keyboard(),
+                )
+            elif user.role == "accountant":
+                await message.answer(
+                    "Здравствуйте! Вы уже зарегистрированы в боте как бухгалтер.",
+                    reply_markup=get_accountant_reply_keyboard(),
                 )
             else:
                 await message.answer(

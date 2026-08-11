@@ -38,15 +38,20 @@ async def show_history(message: types.Message) -> None:
         return
 
     user = await _get_current_user(message)
+    today = date.today()
+    month_start = today.replace(day=1)
+
     async with AsyncSessionFactory() as session:
         from app.database.repositories.inspection_repository import InspectionRepository
         inspection_repository = InspectionRepository(session)
-        inspections = await inspection_repository.list_by_date(date.today())
+        inspections = await inspection_repository.list_by_date(month_start)
 
     relevant = [
         insp
         for insp in inspections
         if matches_engineer_assignment(user.id if user else None, insp.engineer_id)
+        and insp.planned_date.month == today.month
+        and insp.planned_date.year == today.year
     ]
     if not relevant:
         await message.answer("История проверок пуста.", reply_markup=get_engineer_reply_keyboard())
