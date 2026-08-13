@@ -7,6 +7,7 @@ from aiogram.dispatcher import Dispatcher, FSMContext
 
 from app.database.repositories.user_repository import UserRepository
 from app.database.session import AsyncSessionFactory
+from app.keyboards.admin.inspections import get_admin_issue_keyboard
 from app.keyboards.engineer.inspection import get_inspection_action_keyboard
 from app.keyboards.engineer.menu import get_engineer_reply_keyboard
 from app.loader import bot
@@ -256,7 +257,6 @@ async def cannot_complete_reason(message: types.Message, state: FSMContext) -> N
             return
 
         inspection.comment = message.text
-        inspection.status = "cancelled"
         await inspection_repository.update(inspection)
 
         await state.finish()
@@ -268,7 +268,9 @@ async def cannot_complete_reason(message: types.Message, state: FSMContext) -> N
                 admin.telegram_id,
                 f"⚠️ Инженер {engineer_name} не может выполнить проверку #{inspection.id} "
                 f"(объект #{inspection.object_id}, {inspection.planned_date}).\n"
-                f"Причина: {inspection.comment}",
+                f"Причина: {inspection.comment}\n\n"
+                f"Выберите действие:",
+                reply_markup=get_admin_issue_keyboard(inspection.id),
             )
 
     await message.answer(

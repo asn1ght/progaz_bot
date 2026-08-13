@@ -1,3 +1,15 @@
 import asyncio
+
+from app.loader import bot
 from app.scheduler.jobs import run_morning_reminders
-asyncio.run(run_morning_reminders())
+
+
+async def main() -> None:
+    try:
+        await run_morning_reminders()
+    finally:
+        session = await bot.get_session()
+        await session.close()
+
+
+asyncio.run(main())

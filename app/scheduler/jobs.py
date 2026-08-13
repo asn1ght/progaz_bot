@@ -44,7 +44,7 @@ async def run_daily_checks() -> None:
                 await inspection_repository.create(inspection)
 
                 try:
-                    engineer = await user_service.get_user_by_telegram_id(obj.engineer_id)
+                    engineer = await user_service.get_user_by_id(obj.engineer_id)
                     if engineer is not None:
                         await bot.send_message(
                             engineer.telegram_id,
@@ -115,7 +115,7 @@ async def run_morning_reminders() -> None:
             if not lines:
                 continue
 
-            engineer = await user_service.get_user_by_telegram_id(engineer_id)
+            engineer = await user_service.get_user_by_id(engineer_id)
 
             if engineer is not None:
                 try:
@@ -167,7 +167,7 @@ async def run_evening_checks() -> None:
             if obj is None:
                 continue
 
-            engineer = await user_service.get_user_by_telegram_id(inspection.engineer_id)
+            engineer = await user_service.get_user_by_id(inspection.engineer_id)
 
             # Уведомление инженеру с кнопками
             if engineer is not None:

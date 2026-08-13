@@ -29,6 +29,9 @@ class UserService:
     async def get_user_by_telegram_id(self, telegram_id: int) -> User | None:
         return await self.repository.get_by_telegram_id(telegram_id)
 
+    async def get_user_by_id(self, user_id: int) -> User | None:
+        return await self.repository.get_by_id(user_id)
+
     async def approve_user(self, telegram_id: int, role: str) -> User | None:
         user = await self.repository.get_by_telegram_id(telegram_id)
         if user is None:

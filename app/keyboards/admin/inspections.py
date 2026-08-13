@@ -30,3 +30,17 @@ def get_reschedule_confirm_keyboard(inspection_id: int, new_date) -> InlineKeybo
         InlineKeyboardButton("❌ Отмена", callback_data=f"cancel_reschedule:{inspection_id}"),
     )
     return keyboard
+
+
+def get_admin_issue_keyboard(inspection_id: int) -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    keyboard.add(
+        InlineKeyboardButton("📅 Перенести на завтра", callback_data=f"reschedule:{inspection_id}:1")
+    )
+    keyboard.add(
+        InlineKeyboardButton("📅 Перенести на послезавтра", callback_data=f"reschedule:{inspection_id}:2")
+    )
+    keyboard.add(
+        InlineKeyboardButton("❌ Отменить проверку", callback_data=f"cancel_inspection:{inspection_id}")
+    )
+    return keyboard

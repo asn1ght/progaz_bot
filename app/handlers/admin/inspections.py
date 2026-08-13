@@ -266,7 +266,7 @@ async def confirm_reschedule_callback(callback_query: types.CallbackQuery) -> No
         try:
             from app.services.user_service import UserService
             user_service = UserService(session)
-            engineer = await user_service.get_user_by_telegram_id(inspection.engineer_id)
+            engineer = await user_service.get_user_by_id(inspection.engineer_id)
             if engineer is not None:
                 await bot.send_message(
                     engineer.telegram_id,
@@ -287,6 +287,52 @@ async def confirm_reschedule_callback(callback_query: types.CallbackQuery) -> No
 async def cancel_reschedule_callback(callback_query: types.CallbackQuery) -> None:
     await callback_query.message.edit_reply_markup()
     await callback_query.message.answer("❌ Перенос отменен.")
+    await callback_query.answer()
+
+
+async def cancel_inspection_callback(callback_query: types.CallbackQuery) -> None:
+    if callback_query.data is None:
+        await callback_query.answer("Некорректные данные.")
+        return
+
+    _, inspection_id_raw = callback_query.data.split(":", 1)
+    try:
+        inspection_id = int(inspection_id_raw)
+    except ValueError:
+        await callback_query.answer("Некорректные данные.")
+        return
+
+    async with AsyncSessionFactory() as session:
+        from app.database.repositories.inspection_repository import InspectionRepository
+        inspection_repository = InspectionRepository(session)
+        inspection = await inspection_repository.get_by_id(inspection_id)
+
+        if inspection is None:
+            await callback_query.message.edit_reply_markup()
+            await callback_query.message.answer("❌ Проверка не найдена.")
+            await callback_query.answer()
+            return
+
+        inspection.status = "cancelled"
+        await inspection_repository.update(inspection)
+
+        try:
+            from app.services.user_service import UserService
+            user_service = UserService(session)
+            engineer = await user_service.get_user_by_id(inspection.engineer_id)
+            if engineer is not None:
+                await bot.send_message(
+                    engineer.telegram_id,
+                    f"❌ Проверка #{inspection.id} (объект #{inspection.object_id}) отменена администратором.",
+                )
+        except Exception:
+            pass
+
+    await callback_query.message.edit_reply_markup()
+    await callback_query.message.answer(
+        f"✅ <b>Проверка #{inspection_id} отменена.</b>",
+        parse_mode="HTML",
+    )
     await callback_query.answer()
 
 
@@ -314,5 +360,10 @@ def register_inspection_handlers(dp: Dispatcher) -> None:
     dp.register_callback_query_handler(
         cancel_reschedule_callback,
         lambda c: c.data and c.data.startswith("cancel_reschedule:"),
+        state="*",
+    )
+    dp.register_callback_query_handler(
+        cancel_inspection_callback,
+        lambda c: c.data and c.data.startswith("cancel_inspection:"),
         state="*",
     )
