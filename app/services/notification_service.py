@@ -27,10 +27,10 @@ class NotificationService:
         return f"Напоминание: {label} у вас запланирован выезд на объект {object_name} ({planned_date})."
 
     @staticmethod
-    def build_admin_reminder_message(username: str, object_name: str, planned_date: date, kind: str) -> str:
+    def build_admin_reminder_message(full_name: str, object_name: str, planned_date: date, kind: str) -> str:
         label = "сегодня" if kind == "today" else "завтра"
-        username_text = f"@{username}" if username else "инженер"
-        return f"Напоминание: {username_text} {label} будет выезд на объект {object_name} ({planned_date})."
+        name_text = full_name or "инженер"
+        return f"Напоминание: {name_text} {label} будет выезд на объект {object_name} ({planned_date})."
 
     @staticmethod
     def build_accountant_invoice_message(invoice_id: int, object_name: str, amount: str, issue_date: date) -> str:

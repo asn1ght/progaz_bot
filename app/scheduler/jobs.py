@@ -129,8 +129,8 @@ async def run_morning_reminders() -> None:
                     logger.warning("Failed to notify engineer {}: {}", engineer.telegram_id, exc)
 
             engineer_label = (
-                f"@{engineer.username}"
-                if engineer is not None and engineer.username
+                engineer.full_name
+                if engineer is not None
                 else f"инженер #{engineer_id}"
             )
             admin_message = f"📅 <b>Выезды: {engineer_label}</b>\n\n" + "\n".join(lines)
@@ -185,8 +185,8 @@ async def run_evening_checks() -> None:
 
             # Уведомление администратору с кнопками переноса
             engineer_label = (
-                f"@{engineer.username}"
-                if engineer is not None and engineer.username
+                engineer.full_name
+                if engineer is not None
                 else "инженер"
             )
             admins = await user_repository.list_admins()

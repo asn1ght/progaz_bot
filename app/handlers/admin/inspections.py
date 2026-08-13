@@ -166,18 +166,20 @@ async def pick_inspection_engineer(callback_query: types.CallbackQuery, state: F
 
     from app.database.repositories.inspection_repository import InspectionRepository
 
+    planned_date = InspectionService.calculate_next_date(obj.monthly_day)
+
     async with AsyncSessionFactory() as session:
         repository = InspectionRepository(session)
-        today = datetime.utcnow().date()
         already_planned = await repository.get_planned_for_object_in_month(
-            data["object_id"], today.year, today.month
+            data["object_id"], planned_date.year, planned_date.month
         )
         if already_planned is not None:
             await callback_query.message.edit_reply_markup()
             await callback_query.message.answer(
                 f"⚠️ <b>Дублирование запрещено!</b>\n\n"
                 f"На объект #{data['object_id']} уже создана плановая проверка "
-                f"<b>#{already_planned.id}</b> на {already_planned.planned_date} в текущем месяце.",
+                f"<b>#{already_planned.id}</b> на {already_planned.planned_date} "
+                f"в том же месяце, что и новая ({planned_date.year}-{planned_date.month:02d}).",
                 reply_markup=get_inspection_menu_keyboard(),
                 parse_mode="HTML",
             )
@@ -185,7 +187,6 @@ async def pick_inspection_engineer(callback_query: types.CallbackQuery, state: F
             await callback_query.answer()
             return
 
-        planned_date = InspectionService.calculate_next_date(obj.monthly_day)
         inspection = InspectionService.build_inspection(obj, engineer_id, planned_date)
         await repository.create(inspection)
 

@@ -96,9 +96,8 @@ async def list_users(message: types.Message) -> None:
     for u in users:
         role = role_labels.get(u.role, u.role)
         icon = active_icon.get(u.is_active, "❓")
-        uname = f" @{u.username}" if u.username else ""
         lines.append(
-            f"<b>#{u.id}</b> {u.full_name}{uname}\n"
+            f"<b>#{u.id}</b> {u.full_name}\n"
             f"   {role}  |  {icon}\n"
             f"   ─────────────────────"
         )

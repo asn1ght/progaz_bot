@@ -11,8 +11,8 @@ class NotificationServiceTests(unittest.TestCase):
         self.assertIn("Объект 2", message)
 
     def test_build_admin_reminder_message_for_today(self) -> None:
-        message = NotificationService.build_admin_reminder_message("ivan", "Объект 2", date(2026, 10, 2), "today")
-        self.assertIn("@ivan", message)
+        message = NotificationService.build_admin_reminder_message("Иванов Иван", "Объект 2", date(2026, 10, 2), "today")
+        self.assertIn("Иванов Иван", message)
         self.assertIn("сегодня", message)
         self.assertIn("Объект 2", message)
 
