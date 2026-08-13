@@ -7,7 +7,7 @@ from aiogram.dispatcher import Dispatcher, FSMContext
 
 from app.database.repositories.user_repository import UserRepository
 from app.database.session import AsyncSessionFactory
-from app.keyboards.engineer.inspection import get_inspection_action_keyboard
+from app.keyboards.engineer.inspection import get_fail_inspection_keyboard, get_inspection_action_keyboard
 from app.keyboards.engineer.menu import get_engineer_reply_keyboard
 from app.loader import bot
 from app.services.object_service import ObjectService
@@ -94,6 +94,7 @@ async def show_today_inspections(message: types.Message) -> None:
         if matches_engineer_assignment(user.id if user else None, insp.engineer_id)
         and insp.planned_date == today
         and insp.status != "completed"
+        and insp.status != "cancelled"
     ]
     if not relevant:
         await message.answer("Сегодня нет выездов.", reply_markup=get_engineer_reply_keyboard())
@@ -133,6 +134,7 @@ async def show_tomorrow_inspections(message: types.Message) -> None:
         if matches_engineer_assignment(user.id if user else None, insp.engineer_id)
         and insp.planned_date == tomorrow
         and insp.status != "completed"
+        and insp.status != "cancelled"
     ]
     if not relevant:
         await message.answer("Завтра нет выездов.", reply_markup=get_engineer_reply_keyboard())
@@ -216,6 +218,108 @@ async def complete_inspection(message: types.Message, state: FSMContext) -> None
     await message.answer("Проверка отмечена как выполненная.", reply_markup=get_engineer_reply_keyboard())
 
 
+async def start_cannot_complete(message: types.Message) -> None:
+    if not await _is_engineer_user(message):
+        return
+
+    user = await _get_current_user(message)
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
+    async with AsyncSessionFactory() as session:
+        from app.database.repositories.inspection_repository import InspectionRepository
+        inspection_repository = InspectionRepository(session)
+        inspections = await inspection_repository.list_by_date(today)
+
+    relevant = [
+        insp
+        for insp in inspections
+        if matches_engineer_assignment(user.id if user else None, insp.engineer_id)
+        and insp.planned_date in (today, tomorrow)
+        and insp.status != "completed"
+        and insp.status != "cancelled"
+    ]
+
+    if not relevant:
+        await message.answer(
+            "⚠️ У вас нет активных выездов на сегодня или завтра.",
+            reply_markup=get_engineer_reply_keyboard(),
+        )
+        return
+
+    await message.answer(
+        "⚠️ <b>Выберите выезд, который не можете выполнить:</b>",
+        reply_markup=get_fail_inspection_keyboard(relevant),
+        parse_mode="HTML",
+    )
+
+
+async def cannot_complete_from_callback(callback_query: types.CallbackQuery, state: FSMContext) -> None:
+    if callback_query.data is None:
+        await callback_query.answer("Не удалось определить выезд.")
+        return
+
+    _, inspection_id_raw = callback_query.data.split(":", 1)
+    try:
+        inspection_id = int(inspection_id_raw)
+    except ValueError:
+        await callback_query.answer("Некорректный идентификатор выезда.")
+        return
+
+    await callback_query.message.edit_reply_markup()
+    await state.update_data(inspection_id=inspection_id)
+    await state.set_state(EngineerStates.waiting_fail_reason)
+    await callback_query.message.answer(
+        "📝 <b>Укажите причину</b>, почему выезд не может быть выполнен.\n\n"
+        "Если нужна помощь — свяжитесь с администратором.\n"
+        "Администратор получит уведомление.",
+        reply_markup=get_engineer_reply_keyboard(),
+        parse_mode="HTML",
+    )
+    await callback_query.answer()
+
+
+async def cannot_complete_reason(message: types.Message, state: FSMContext) -> None:
+    if not message.text:
+        await message.answer("Введите текст причины.")
+        return
+
+    user = await _get_current_user(message)
+    data = await state.get_data()
+    inspection_id = data.get("inspection_id")
+
+    async with AsyncSessionFactory() as session:
+        from app.database.repositories.inspection_repository import InspectionRepository
+        inspection_repository = InspectionRepository(session)
+        inspection = await inspection_repository.get_by_id(inspection_id) if inspection_id is not None else None
+
+        if inspection is None or not matches_engineer_assignment(user.id if user else None, inspection.engineer_id):
+            await message.answer("Выезд не найден или не принадлежит вам.")
+            await state.finish()
+            return
+
+        inspection.comment = message.text
+        inspection.status = "cancelled"
+        await inspection_repository.update(inspection)
+
+        await state.finish()
+        user_repository = UserRepository(session)
+        admins = await user_repository.list_admins()
+        engineer_name = message.from_user.full_name if message.from_user else "инженер"
+        for admin in admins:
+            await bot.send_message(
+                admin.telegram_id,
+                f"⚠️ Инженер {engineer_name} не может выполнить проверку #{inspection.id} "
+                f"(объект #{inspection.object_id}, {inspection.planned_date}).\n"
+                f"Причина: {inspection.comment}",
+            )
+
+    await message.answer(
+        "⚠️ Выезд отмечен как невыполненный. Администратор уведомлен.",
+        reply_markup=get_engineer_reply_keyboard(),
+    )
+
+
 def register_engineer_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(show_my_objects, text=["🧭 Мои объекты"], state="*")
     dp.register_message_handler(show_today_inspections, text=["📅 Сегодня"], state="*")
@@ -223,3 +327,6 @@ def register_engineer_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(start_complete_inspection, text=["✅ Проверка выполнена"], state="*")
     dp.register_callback_query_handler(complete_inspection_from_callback, lambda c: c.data and c.data.startswith("complete_inspection:"), state="*")
     dp.register_message_handler(complete_inspection, state=EngineerStates.waiting_comment)
+    dp.register_message_handler(start_cannot_complete, text=["⚠️ Не могу выполнить"], state="*")
+    dp.register_callback_query_handler(cannot_complete_from_callback, lambda c: c.data and c.data.startswith("fail_inspection:"), state="*")
+    dp.register_message_handler(cannot_complete_reason, state=EngineerStates.waiting_fail_reason)

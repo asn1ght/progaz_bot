@@ -24,9 +24,21 @@ class UserRepository:
         result = await self.session.execute(select(User).where(User.role == "admin", User.is_active.is_(True)))
         return list(result.scalars().all())
 
+    async def list_accountants(self) -> list[User]:
+        result = await self.session.execute(select(User).where(User.role == "accountant", User.is_active.is_(True)))
+        return list(result.scalars().all())
+
+    async def list_engineers(self) -> list[User]:
+        result = await self.session.execute(select(User).where(User.role == "engineer", User.is_active.is_(True)))
+        return list(result.scalars().all())
+
     async def update_role(self, user: User, role: str) -> User:
         user.role = role
         user.is_active = True
         await self.session.commit()
         await self.session.refresh(user)
         return user
+
+    async def list_all(self) -> list[User]:
+        result = await self.session.execute(select(User).order_by(User.id))
+        return list(result.scalars().all())

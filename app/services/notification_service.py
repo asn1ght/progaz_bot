@@ -31,3 +31,10 @@ class NotificationService:
         label = "сегодня" if kind == "today" else "завтра"
         username_text = f"@{username}" if username else "инженер"
         return f"Напоминание: {username_text} {label} будет выезд на объект {object_name} ({planned_date})."
+
+    @staticmethod
+    def build_accountant_invoice_message(invoice_id: int, object_name: str, amount: str, issue_date: date) -> str:
+        return (
+            f"📑 Новый счет #{invoice_id}: объект {object_name}, "
+            f"сумма {amount} ₽, дата {issue_date}."
+        )

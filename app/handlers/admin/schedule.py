@@ -33,7 +33,11 @@ async def start_schedule_change(message: types.Message, state: FSMContext) -> No
         return
 
     await state.set_state(ObjectStates.waiting_schedule_object_id)
-    await message.answer("Введите ID объекта для переноса даты.", reply_markup=get_object_menu_keyboard())
+    await message.answer(
+        "🔁 <b>Перенос даты</b>\n\nВведите ID объекта для переноса даты проверки.",
+        reply_markup=get_object_menu_keyboard(),
+        parse_mode="HTML",
+    )
 
 
 async def schedule_change_object_id(message: types.Message, state: FSMContext) -> None:
@@ -67,9 +71,12 @@ async def schedule_change_object_id(message: types.Message, state: FSMContext) -
         else f"Регулярный день проверки: {obj.monthly_day}."
     )
     await message.answer(
-        f"Объект #{obj.id} {obj.name}\n{planned_info}\n"
+        f"🔁 <b>Перенос даты</b>\n\n"
+        f"Объект: <b>#{obj.id} — {obj.name}</b>\n"
+        f"{planned_info}\n\n"
         "Введите новый день месяца для проверки (1-31).",
         reply_markup=get_object_menu_keyboard(),
+        parse_mode="HTML",
     )
 
 
@@ -92,10 +99,12 @@ async def schedule_change_new_day(message: types.Message, state: FSMContext) -> 
     await state.set_state(ObjectStates.waiting_schedule_mode)
 
     await message.answer(
-        "Выберите вариант переноса:\n"
-        "1. Только на этот месяц — изменит текущую запланированную проверку.\n"
-        "2. Постоянно — изменит регулярный день для всех следующих проверок.",
+        "🔁 <b>Вариант переноса</b>\n\n"
+        "<b>1.</b> Только на этот месяц — изменит текущую запланированную проверку\n"
+        "<b>2.</b> Постоянно — изменит регулярный день для всех следующих проверок\n\n"
+        "<i>Введите 1 или 2.</i>",
         reply_markup=get_object_menu_keyboard(),
+        parse_mode="HTML",
     )
 
 
@@ -117,10 +126,18 @@ async def schedule_change_mode(message: types.Message, state: FSMContext) -> Non
         service = ScheduleChangeService(session)
         if mode == "1":
             await service.create_temporary_change(object_id, new_day)
-            await message.answer("Дата перенесена только на этот месяц.", reply_markup=get_object_menu_keyboard())
+            await message.answer(
+                "✅ <b>Дата перенесена только на этот месяц.</b>",
+                reply_markup=get_object_menu_keyboard(),
+                parse_mode="HTML",
+            )
         elif mode == "2":
             await service.create_permanent_change(object_id, new_day)
-            await message.answer("Дата перенесена постоянно.", reply_markup=get_object_menu_keyboard())
+            await message.answer(
+                "✅ <b>Дата перенесена постоянно.</b>\nНовый регулярный день: <b>{new_day}</b>",
+                reply_markup=get_object_menu_keyboard(),
+                parse_mode="HTML",
+            )
         else:
             await message.answer("Неверный вариант. Введите 1 или 2.")
             return

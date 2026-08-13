@@ -59,7 +59,10 @@ async def show_history(message: types.Message) -> None:
 
     lines = []
     for insp in relevant:
-        status_label = "выполнено" if insp.status == "completed" else "в работе"
+        status_label = {
+            "completed": "✅ выполнено",
+            "cancelled": "⚠️ не выполнено",
+        }.get(insp.status, "⏳ в работе")
         lines.append(f"#{insp.id} | {insp.planned_date} | {status_label} | {insp.comment or '-'}")
 
     await message.answer("\n".join(lines), reply_markup=get_engineer_reply_keyboard())

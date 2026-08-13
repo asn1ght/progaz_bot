@@ -6,9 +6,10 @@ from aiogram import types
 from aiogram.dispatcher import Dispatcher, FSMContext
 
 from app.config import settings
+from app.database.repositories.user_repository import UserRepository
 from app.database.session import AsyncSessionFactory
 from app.keyboards.admin.menu import get_admin_reply_keyboard
-from app.keyboards.admin.objects import get_object_menu_keyboard
+from app.keyboards.admin.objects import get_engineer_selection_keyboard, get_object_menu_keyboard
 from app.services.object_service import ObjectService
 from app.services.user_service import UserService
 from app.states.object import ObjectStates
@@ -31,12 +32,14 @@ async def show_object_menu(message: types.Message) -> None:
         return
 
     await message.answer(
-        "Меню управления объектами:\n"
-        "• Добавить объект\n"
-        "• Список объектов\n"
-        "• Изменить объект\n"
-        "• Удалить объект",
+        "📦 <b>Управление объектами</b>\n\n"
+        "➕ Добавить — создать новый объект\n"
+        "📋 Список — показать все объекты\n"
+        "✏️ Изменить — редактировать объект\n"
+        "🗑 Удалить — деактивировать объект\n"
+        "🔁 Перенос дат — изменить график проверок",
         reply_markup=get_object_menu_keyboard(),
+        parse_mode="HTML",
     )
 
 
@@ -49,14 +52,24 @@ async def list_objects(message: types.Message) -> None:
         objects = await service.list_objects()
 
     if not objects:
-        await message.answer("Список объектов пуст.", reply_markup=get_object_menu_keyboard())
+        await message.answer(
+            "📭 <b>Список объектов пуст.</b>",
+            reply_markup=get_object_menu_keyboard(),
+            parse_mode="HTML",
+        )
         return
 
-    lines = [
-        f"#{obj.id} | {obj.name} | {obj.address} | engineer_id={obj.engineer_id or '-'} | day={obj.monthly_day} | amount={obj.invoice_amount}"
-        for obj in objects
-    ]
-    await message.answer("\n".join(lines), reply_markup=get_object_menu_keyboard())
+    lines = [f"📋 <b>Объекты</b> ({len(objects)} шт.)\n"]
+    for obj in objects:
+        eng = f"инженер #{obj.engineer_id}" if obj.engineer_id else "не назначен"
+        lines.append(
+            f"<b>#{obj.id} — {obj.name}</b>\n"
+            f"   📍 {obj.address}\n"
+            f"   👷 {eng}  |  📅 день: <b>{obj.monthly_day}</b>  |  💰 {obj.invoice_amount} ₽\n"
+            f"   ─────────────────────"
+        )
+
+    await message.answer("\n".join(lines), reply_markup=get_object_menu_keyboard(), parse_mode="HTML")
 
 
 async def start_add_object(message: types.Message, state: FSMContext) -> None:
@@ -64,7 +77,7 @@ async def start_add_object(message: types.Message, state: FSMContext) -> None:
         return
 
     await state.set_state(ObjectStates.waiting_name)
-    await message.answer("Введите название объекта.", reply_markup=get_object_menu_keyboard())
+    await message.answer("🏷 <b>Введите название объекта.</b>", reply_markup=get_object_menu_keyboard(), parse_mode="HTML")
 
 
 async def add_object_name(message: types.Message, state: FSMContext) -> None:
@@ -74,7 +87,7 @@ async def add_object_name(message: types.Message, state: FSMContext) -> None:
 
     await state.update_data(name=message.text)
     await state.set_state(ObjectStates.waiting_address)
-    await message.answer("Введите адрес объекта.")
+    await message.answer("📍 <b>Введите адрес объекта.</b>", parse_mode="HTML")
 
 
 async def add_object_address(message: types.Message, state: FSMContext) -> None:
@@ -83,24 +96,53 @@ async def add_object_address(message: types.Message, state: FSMContext) -> None:
         return
 
     await state.update_data(address=message.text)
+
+    async with AsyncSessionFactory() as session:
+        user_repository = UserRepository(session)
+        engineers = await user_repository.list_engineers()
+
+    if not engineers:
+        await state.update_data(engineer_id=None)
+        await state.set_state(ObjectStates.waiting_monthly_day)
+        await message.answer(
+            "⚠️ <b>В системе нет зарегистрированных инженеров.</b>\nИнженер не назначен.\n\n🔢 Введите день проверки объекта (1-31).",
+            reply_markup=get_object_menu_keyboard(),
+            parse_mode="HTML",
+        )
+        return
+
     await state.set_state(ObjectStates.waiting_engineer_id)
-    await message.answer("Введите ID инженера или 0, если инженер пока не назначен.")
+    await message.answer(
+        "Выберите инженера из списка:",
+        reply_markup=get_engineer_selection_keyboard(engineers),
+    )
 
 
-async def add_object_engineer_id(message: types.Message, state: FSMContext) -> None:
-    if not message.text:
-        await message.answer("Введите корректный ID инженера.")
+async def pick_engineer_callback(callback_query: types.CallbackQuery, state: FSMContext) -> None:
+    if callback_query.data is None:
+        await callback_query.answer("Некорректные данные.")
         return
 
-    try:
-        engineer_id = int(message.text)
-    except ValueError:
-        await message.answer("ID инженера должен быть числом.")
-        return
+    _, value = callback_query.data.split(":", 1)
 
-    await state.update_data(engineer_id=None if engineer_id == 0 else engineer_id)
+    if value == "skip":
+        await state.update_data(engineer_id=None)
+        await callback_query.message.edit_reply_markup()  # remove inline keyboard
+    else:
+        try:
+            engineer_id = int(value)
+        except ValueError:
+            await callback_query.answer("Некорректный ID инженера.")
+            return
+        await state.update_data(engineer_id=engineer_id)
+
     await state.set_state(ObjectStates.waiting_monthly_day)
-    await message.answer("Введите день проверки объекта (1-31).")
+    await callback_query.message.answer(
+        "🔢 <b>Введите день проверки объекта</b> (1-31).",
+        reply_markup=get_object_menu_keyboard(),
+        parse_mode="HTML",
+    )
+    await callback_query.answer()
 
 
 async def add_object_monthly_day(message: types.Message, state: FSMContext) -> None:
@@ -120,7 +162,7 @@ async def add_object_monthly_day(message: types.Message, state: FSMContext) -> N
 
     await state.update_data(monthly_day=monthly_day)
     await state.set_state(ObjectStates.waiting_invoice_amount)
-    await message.answer("Введите сумму обслуживания (например: 15000.00).")
+    await message.answer("💰 <b>Введите сумму обслуживания</b> (например: 15000.00).", parse_mode="HTML")
 
 
 async def add_object_invoice_amount(message: types.Message, state: FSMContext) -> None:
@@ -136,7 +178,7 @@ async def add_object_invoice_amount(message: types.Message, state: FSMContext) -
 
     await state.update_data(invoice_amount=invoice_amount)
     await state.set_state(ObjectStates.waiting_comment)
-    await message.answer("Введите комментарий или отправьте '-' если комментария нет.")
+    await message.answer("💬 <b>Введите комментарий</b> или отправьте \"-\" если комментария нет.", parse_mode="HTML")
 
 
 async def add_object_comment(message: types.Message, state: FSMContext) -> None:
@@ -160,8 +202,9 @@ async def add_object_comment(message: types.Message, state: FSMContext) -> None:
 
     await state.finish()
     await message.answer(
-        "Объект успешно создан.",
+        "✅ <b>Объект успешно создан!</b>",
         reply_markup=get_object_menu_keyboard(),
+        parse_mode="HTML",
     )
 
 
@@ -170,7 +213,11 @@ async def start_edit_object(message: types.Message, state: FSMContext) -> None:
         return
 
     await state.set_state(ObjectStates.waiting_edit_object_id)
-    await message.answer("Введите ID объекта, который хотите изменить.", reply_markup=get_object_menu_keyboard())
+    await message.answer(
+        "✏️ <b>Введите ID объекта</b> для редактирования.",
+        reply_markup=get_object_menu_keyboard(),
+        parse_mode="HTML",
+    )
 
 
 async def edit_object_id(message: types.Message, state: FSMContext) -> None:
@@ -195,7 +242,7 @@ async def edit_object_id(message: types.Message, state: FSMContext) -> None:
 
     await state.update_data(object_id=object_id)
     await state.set_state(ObjectStates.waiting_new_name)
-    await message.answer("Введите новое название объекта.")
+    await message.answer("✏️ <b>Введите новое название объекта.</b>", parse_mode="HTML")
 
 
 async def edit_object_name(message: types.Message, state: FSMContext) -> None:
@@ -209,7 +256,7 @@ async def edit_object_name(message: types.Message, state: FSMContext) -> None:
         await service.update_object(data["object_id"], name=message.text)
 
     await state.set_state(ObjectStates.waiting_new_address)
-    await message.answer("Введите новый адрес объекта.")
+    await message.answer("📍 <b>Введите новый адрес объекта.</b>", parse_mode="HTML")
 
 
 async def edit_object_address(message: types.Message, state: FSMContext) -> None:
@@ -223,7 +270,10 @@ async def edit_object_address(message: types.Message, state: FSMContext) -> None
         await service.update_object(data["object_id"], address=message.text)
 
     await state.set_state(ObjectStates.waiting_new_engineer_id)
-    await message.answer("Введите новый ID инженера или 0, если инженер не назначен.")
+    await message.answer(
+        "👷 <b>Введите новый ID инженера</b> или 0, если инженер не назначен.",
+        parse_mode="HTML",
+    )
 
 
 async def edit_object_engineer_id(message: types.Message, state: FSMContext) -> None:
@@ -243,7 +293,7 @@ async def edit_object_engineer_id(message: types.Message, state: FSMContext) -> 
         await service.update_object(data["object_id"], engineer_id=None if engineer_id == 0 else engineer_id)
 
     await state.set_state(ObjectStates.waiting_new_monthly_day)
-    await message.answer("Введите новый день проверки объекта (1-31).")
+    await message.answer("🔢 <b>Введите новый день проверки</b> (1-31).", parse_mode="HTML")
 
 
 async def edit_object_monthly_day(message: types.Message, state: FSMContext) -> None:
@@ -267,7 +317,7 @@ async def edit_object_monthly_day(message: types.Message, state: FSMContext) -> 
         await service.update_object(data["object_id"], monthly_day=monthly_day)
 
     await state.set_state(ObjectStates.waiting_new_invoice_amount)
-    await message.answer("Введите новую сумму обслуживания (например: 15000.00).")
+    await message.answer("💰 <b>Введите новую сумму обслуживания</b> (например: 15000.00).", parse_mode="HTML")
 
 
 async def edit_object_invoice_amount(message: types.Message, state: FSMContext) -> None:
@@ -287,7 +337,7 @@ async def edit_object_invoice_amount(message: types.Message, state: FSMContext) 
         await service.update_object(data["object_id"], invoice_amount=invoice_amount)
 
     await state.set_state(ObjectStates.waiting_new_comment)
-    await message.answer("Введите новый комментарий или отправьте '-' если комментария нет.")
+    await message.answer("💬 <b>Введите новый комментарий</b> или отправьте \"-\" если комментария нет.", parse_mode="HTML")
 
 
 async def edit_object_comment(message: types.Message, state: FSMContext) -> None:
@@ -302,7 +352,11 @@ async def edit_object_comment(message: types.Message, state: FSMContext) -> None
         await service.update_object(data["object_id"], comment=comment)
 
     await state.finish()
-    await message.answer("Объект успешно обновлен.", reply_markup=get_object_menu_keyboard())
+    await message.answer(
+        "✅ <b>Объект успешно обновлен.</b>",
+        reply_markup=get_object_menu_keyboard(),
+        parse_mode="HTML",
+    )
 
 
 async def start_delete_object(message: types.Message, state: FSMContext) -> None:
@@ -310,7 +364,11 @@ async def start_delete_object(message: types.Message, state: FSMContext) -> None
         return
 
     await state.set_state(ObjectStates.waiting_delete_object_id)
-    await message.answer("Введите ID объекта, который хотите удалить.", reply_markup=get_object_menu_keyboard())
+    await message.answer(
+        "🗑 <b>Введите ID объекта</b> для удаления.",
+        reply_markup=get_object_menu_keyboard(),
+        parse_mode="HTML",
+    )
 
 
 async def delete_object(message: types.Message, state: FSMContext) -> None:
@@ -329,11 +387,16 @@ async def delete_object(message: types.Message, state: FSMContext) -> None:
         obj = await service.delete_object(object_id)
 
     if obj is None:
-        await message.answer("Объект не найден.", reply_markup=get_object_menu_keyboard())
+        await message.answer(
+            "❌ <b>Объект не найден.</b>",
+            reply_markup=get_object_menu_keyboard(),
+            parse_mode="HTML",
+        )
     else:
         await message.answer(
-            f"Объект #{obj.id} удален.",
+            f"🗑 <b>Объект #{obj.id} ({obj.name}) деактивирован.</b>",
             reply_markup=get_object_menu_keyboard(),
+            parse_mode="HTML",
         )
     await state.finish()
 
@@ -351,7 +414,11 @@ def register_object_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(start_add_object, text=["➕ Добавить объект"], state="*")
     dp.register_message_handler(add_object_name, state=ObjectStates.waiting_name)
     dp.register_message_handler(add_object_address, state=ObjectStates.waiting_address)
-    dp.register_message_handler(add_object_engineer_id, state=ObjectStates.waiting_engineer_id)
+    dp.register_callback_query_handler(
+        pick_engineer_callback,
+        lambda c: c.data and c.data.startswith("pick_engineer:"),
+        state=ObjectStates.waiting_engineer_id,
+    )
     dp.register_message_handler(add_object_monthly_day, state=ObjectStates.waiting_monthly_day)
     dp.register_message_handler(add_object_invoice_amount, state=ObjectStates.waiting_invoice_amount)
     dp.register_message_handler(add_object_comment, state=ObjectStates.waiting_comment)

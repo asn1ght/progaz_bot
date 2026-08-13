@@ -7,9 +7,11 @@ from aiogram.dispatcher import Dispatcher, FSMContext
 
 from app.config import settings
 from app.database.models import Inspection, Object
+from app.database.repositories.user_repository import UserRepository
 from app.database.session import AsyncSessionFactory
 from app.keyboards.admin.inspections import get_inspection_menu_keyboard
 from app.keyboards.admin.menu import get_admin_reply_keyboard
+from app.keyboards.admin.objects import get_engineer_selection_keyboard
 from app.services.inspection_service import InspectionService
 from app.services.object_service import ObjectService
 from app.services.user_service import UserService
@@ -33,10 +35,11 @@ async def show_inspection_menu(message: types.Message) -> None:
         return
 
     await message.answer(
-        "Меню управления проверками:\n"
-        "• Создать проверку\n"
-        "• Список проверок",
+        "🛠 <b>Управление проверками</b>\n\n"
+        "🗓 Создать — назначить новую проверку\n"
+        "📜 Список — показать все проверки",
         reply_markup=get_inspection_menu_keyboard(),
+        parse_mode="HTML",
     )
 
 
@@ -50,14 +53,24 @@ async def list_inspections(message: types.Message) -> None:
         inspections = await repository.list_by_date()
 
     if not inspections:
-        await message.answer("Список проверок пуст.", reply_markup=get_inspection_menu_keyboard())
+        await message.answer(
+            "📭 <b>Список проверок пуст.</b>",
+            reply_markup=get_inspection_menu_keyboard(),
+            parse_mode="HTML",
+        )
         return
 
-    lines = [
-        f"#{inspection.id} | object_id={inspection.object_id} | engineer_id={inspection.engineer_id} | date={inspection.planned_date} | status={inspection.status}"
-        for inspection in inspections
-    ]
-    await message.answer("\n".join(lines), reply_markup=get_inspection_menu_keyboard())
+    status_labels = {"planned": "⏳ запланирована", "completed": "✅ выполнена", "cancelled": "❌ отменена"}
+    lines = [f"📜 <b>Проверки</b> ({len(inspections)} шт.)\n"]
+    for insp in inspections:
+        status = status_labels.get(insp.status, insp.status)
+        lines.append(
+            f"<b>#{insp.id}</b>  |  объект #{insp.object_id}  |  инженер #{insp.engineer_id}\n"
+            f"   📅 {insp.planned_date}  |  {status}\n"
+            f"   ─────────────────────"
+        )
+
+    await message.answer("\n".join(lines), reply_markup=get_inspection_menu_keyboard(), parse_mode="HTML")
 
 
 async def start_create_inspection(message: types.Message, state: FSMContext) -> None:
@@ -65,7 +78,11 @@ async def start_create_inspection(message: types.Message, state: FSMContext) -> 
         return
 
     await state.set_state(InspectionStates.waiting_object_id)
-    await message.answer("Введите ID объекта для проверки.", reply_markup=get_inspection_menu_keyboard())
+    await message.answer(
+        "🏷 <b>Введите ID объекта</b> для проверки.",
+        reply_markup=get_inspection_menu_keyboard(),
+        parse_mode="HTML",
+    )
 
 
 async def create_inspection_object_id(message: types.Message, state: FSMContext) -> None:
@@ -89,19 +106,43 @@ async def create_inspection_object_id(message: types.Message, state: FSMContext)
         return
 
     await state.update_data(object_id=object_id)
+
+    async with AsyncSessionFactory() as session:
+        user_repository = UserRepository(session)
+        engineers = await user_repository.list_engineers()
+
+    if not engineers:
+        await message.answer(
+            "⚠️ <b>В системе нет зарегистрированных инженеров.</b>",
+            reply_markup=get_inspection_menu_keyboard(),
+            parse_mode="HTML",
+        )
+        await state.finish()
+        return
+
     await state.set_state(InspectionStates.waiting_engineer_id)
-    await message.answer("Введите ID инженера для этой проверки.")
+    await message.answer(
+        "👷 <b>Выберите инженера</b> для проверки:",
+        reply_markup=get_engineer_selection_keyboard(engineers),
+        parse_mode="HTML",
+    )
 
 
-async def create_inspection_engineer_id(message: types.Message, state: FSMContext) -> None:
-    if not message.text:
-        await message.answer("Введите корректный ID инженера.")
+async def pick_inspection_engineer(callback_query: types.CallbackQuery, state: FSMContext) -> None:
+    if callback_query.data is None:
+        await callback_query.answer("Некорректные данные.")
+        return
+
+    _, value = callback_query.data.split(":", 1)
+
+    if value == "skip":
+        await callback_query.answer("Для проверки необходимо выбрать инженера.")
         return
 
     try:
-        engineer_id = int(message.text)
+        engineer_id = int(value)
     except ValueError:
-        await message.answer("ID инженера должен быть числом.")
+        await callback_query.answer("Некорректный ID инженера.")
         return
 
     data = await state.get_data()
@@ -110,8 +151,12 @@ async def create_inspection_engineer_id(message: types.Message, state: FSMContex
         obj = await service.get_object_by_id(data["object_id"])
 
     if obj is None:
-        await message.answer("Объект не найден.", reply_markup=get_inspection_menu_keyboard())
+        await callback_query.message.answer(
+            "❌ Объект не найден.",
+            reply_markup=get_inspection_menu_keyboard(),
+        )
         await state.finish()
+        await callback_query.answer()
         return
 
     from app.database.repositories.inspection_repository import InspectionRepository
@@ -123,24 +168,30 @@ async def create_inspection_engineer_id(message: types.Message, state: FSMContex
             data["object_id"], today.year, today.month
         )
         if already_planned is not None:
-            await message.answer(
-                f"На этот объект уже создана плановая проверка #{already_planned.id} "
-                f"на {already_planned.planned_date} в текущем месяце.\n"
-                "Создание дублирующей проверки запрещено.",
+            await callback_query.message.edit_reply_markup()
+            await callback_query.message.answer(
+                f"⚠️ <b>Дублирование запрещено!</b>\n\n"
+                f"На объект #{data['object_id']} уже создана плановая проверка "
+                f"<b>#{already_planned.id}</b> на {already_planned.planned_date} в текущем месяце.",
                 reply_markup=get_inspection_menu_keyboard(),
+                parse_mode="HTML",
             )
             await state.finish()
+            await callback_query.answer()
             return
 
         planned_date = InspectionService.calculate_next_date(obj.monthly_day)
         inspection = InspectionService.build_inspection(obj, engineer_id, planned_date)
         await repository.create(inspection)
 
+    await callback_query.message.edit_reply_markup()
     await state.finish()
-    await message.answer(
-        f"Проверка создана для объекта #{data['object_id']} на дату {planned_date}.",
+    await callback_query.message.answer(
+        f"✅ <b>Проверка создана!</b>\nОбъект #{data['object_id']}  |  📅 {planned_date}",
         reply_markup=get_inspection_menu_keyboard(),
+        parse_mode="HTML",
     )
+    await callback_query.answer()
 
 
 async def back_to_admin_menu(message: types.Message) -> None:
@@ -155,5 +206,9 @@ def register_inspection_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(list_inspections, text=["📜 Список проверок"], state="*")
     dp.register_message_handler(start_create_inspection, text=["🗓 Создать проверку"], state="*")
     dp.register_message_handler(create_inspection_object_id, state=InspectionStates.waiting_object_id)
-    dp.register_message_handler(create_inspection_engineer_id, state=InspectionStates.waiting_engineer_id)
+    dp.register_callback_query_handler(
+        pick_inspection_engineer,
+        lambda c: c.data and c.data.startswith("pick_engineer:"),
+        state=InspectionStates.waiting_engineer_id,
+    )
     dp.register_message_handler(back_to_admin_menu, text=["⬅️ Назад"], state="*")

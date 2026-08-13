@@ -47,18 +47,29 @@ async def list_all_invoices(message: types.Message) -> None:
         invoices = await invoice_repository.list_all()
 
     if not invoices:
-        await message.answer("Список счетов пуст.", reply_markup=get_invoice_menu_keyboard())
+        await message.answer(
+            "📭 <b>Список счетов пуст.</b>",
+            reply_markup=get_invoice_menu_keyboard(),
+            parse_mode="HTML",
+        )
         return
 
-    lines = ["📑 <b>Все счета</b>\n"]
+    total_waiting = sum(inv.amount for inv in invoices if inv.status == "waiting")
+    total_paid = sum(inv.amount for inv in invoices if inv.status == "paid")
+    lines = [
+        f"📑 <b>Счета</b> ({len(invoices)} шт.)\n"
+        f"⏳ ожидают: <b>{total_waiting} ₽</b>  |  ✅ оплачено: <b>{total_paid} ₽</b>\n"
+    ]
     for inv in invoices:
         status_icon = "✅" if inv.status == "paid" else "⏳"
+        paid_info = f" (оплачен {inv.paid_date})" if inv.paid_date else ""
         lines.append(
-            f"#{inv.id} | объект #{inv.object_id} | {inv.issue_date} | "
-            f"{inv.amount} ₽ | {status_icon} {inv.status}"
+            f"<b>#{inv.id}</b>  |  объект #{inv.object_id}  |  {inv.issue_date}\n"
+            f"   {inv.amount} ₽  |  {status_icon} {inv.status}{paid_info}\n"
+            f"   ─────────────────────"
         )
 
-    await message.answer("\n".join(lines), reply_markup=get_invoice_menu_keyboard())
+    await message.answer("\n".join(lines), reply_markup=get_invoice_menu_keyboard(), parse_mode="HTML")
 
 
 async def start_pay_invoice(message: types.Message, state: FSMContext) -> None:
@@ -106,8 +117,9 @@ async def pay_invoice_by_id(message: types.Message, state: FSMContext) -> None:
 
     await state.finish()
     await message.answer(
-        f"✅ Счет #{invoice.id} на сумму {invoice.amount} ₽ отмечен оплаченным.",
+        f"✅ <b>Счет #{invoice.id} оплачен!</b>\nСумма: {invoice.amount} ₽  |  Дата оплаты: {date.today()}",
         reply_markup=get_invoice_menu_keyboard(),
+        parse_mode="HTML",
     )
 
 

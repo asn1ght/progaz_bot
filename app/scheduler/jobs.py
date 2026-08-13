@@ -66,6 +66,16 @@ async def run_daily_checks() -> None:
                 except Exception as exc:
                     logger.warning("Failed to notify admin about invoice: {}", exc)
 
+                accountants = await user_repository.list_accountants()
+                for accountant in accountants:
+                    try:
+                        message = NotificationService.build_accountant_invoice_message(
+                            invoice.id, obj.name, str(obj.invoice_amount), invoice.issue_date
+                        )
+                        await bot.send_message(accountant.telegram_id, message)
+                    except Exception as exc:
+                        logger.warning("Failed to notify accountant {}: {}", accountant.telegram_id, exc)
+
         if not NotificationService.should_send_reminder(now):
             logger.info("Skipping reminder dispatch outside 10:00 Moscow time")
             return
