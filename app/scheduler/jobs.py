@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, timedelta
 
 from loguru import logger
 
@@ -8,6 +8,8 @@ from app.config import settings
 from app.database.repositories.inspection_repository import InspectionRepository
 from app.database.repositories.user_repository import UserRepository
 from app.database.session import AsyncSessionFactory
+from app.keyboards.admin.inspections import get_reschedule_keyboard
+from app.keyboards.engineer.inspection import get_inspection_action_keyboard
 from app.loader import bot
 from app.services.inspection_service import InspectionService
 from app.services.invoice_service import InvoiceService
@@ -19,7 +21,6 @@ from app.services.user_service import UserService
 async def run_daily_checks() -> None:
     logger.info("Starting daily scheduler checks")
     today = date.today()
-    now = datetime.now(NotificationService.MOSCOW_TZ)
 
     async with AsyncSessionFactory() as session:
         object_service = ObjectService(session)
@@ -76,54 +77,131 @@ async def run_daily_checks() -> None:
                     except Exception as exc:
                         logger.warning("Failed to notify accountant {}: {}", accountant.telegram_id, exc)
 
-        if not NotificationService.should_send_reminder(now):
-            logger.info("Skipping reminder dispatch outside 10:00 Moscow time")
-            return
 
-        reminders = await inspection_repository.list_by_date(today)
-        for inspection in reminders:
-            if inspection.object_id is None:
+async def run_morning_reminders() -> None:
+    logger.info("Starting morning reminder checks")
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
+    async with AsyncSessionFactory() as session:
+        object_service = ObjectService(session)
+        user_service = UserService(session)
+        inspection_repository = InspectionRepository(session)
+        user_repository = UserRepository(session)
+        inspections = await inspection_repository.list_by_date(today)
+
+        relevant = [
+            insp
+            for insp in inspections
+            if insp.status == "planned"
+            and insp.planned_date in (today, tomorrow)
+        ]
+
+        plan_by_engineer: dict[int, dict[str, list[str]]] = {}
+        for insp in relevant:
+            obj = await object_service.get_object_by_id(insp.object_id)
+            if obj is None:
                 continue
+            plan = plan_by_engineer.setdefault(insp.engineer_id, {"today": [], "tomorrow": []})
+            key = "today" if insp.planned_date == today else "tomorrow"
+            plan[key].append(obj.name)
+
+        for engineer_id, plan in plan_by_engineer.items():
+            lines = []
+            if plan["today"]:
+                lines.append(f"Сегодня: {', '.join(plan['today'])}")
+            if plan["tomorrow"]:
+                lines.append(f"Завтра: {', '.join(plan['tomorrow'])}")
+            if not lines:
+                continue
+
+            engineer = await user_service.get_user_by_telegram_id(engineer_id)
+
+            if engineer is not None:
+                try:
+                    await bot.send_message(
+                        engineer.telegram_id,
+                        "📅 <b>Напоминание о выездах</b>\n\n" + "\n".join(lines),
+                        parse_mode="HTML",
+                    )
+                    logger.info("Sent morning reminder to engineer {}", engineer.telegram_id)
+                except Exception as exc:
+                    logger.warning("Failed to notify engineer {}: {}", engineer.telegram_id, exc)
+
+            engineer_label = (
+                f"@{engineer.username}"
+                if engineer is not None and engineer.username
+                else f"инженер #{engineer_id}"
+            )
+            admin_message = f"📅 <b>Выезды: {engineer_label}</b>\n\n" + "\n".join(lines)
+            admins = await user_repository.list_admins()
+            for admin in admins:
+                if engineer is not None and admin.telegram_id == engineer.telegram_id:
+                    continue
+                try:
+                    await bot.send_message(admin.telegram_id, admin_message, parse_mode="HTML")
+                    logger.info("Sent morning reminder to admin {}", admin.telegram_id)
+                except Exception as exc:
+                    logger.warning("Failed to notify admin {}: {}", admin.telegram_id, exc)
+
+
+async def run_evening_checks() -> None:
+    logger.info("Starting evening scheduler checks")
+    today = date.today()
+
+    async with AsyncSessionFactory() as session:
+        object_service = ObjectService(session)
+        user_service = UserService(session)
+        inspection_repository = InspectionRepository(session)
+        user_repository = UserRepository(session)
+        inspections = await inspection_repository.list_by_date(today)
+
+        overdue = [
+            insp
+            for insp in inspections
+            if insp.planned_date == today and insp.status == "planned"
+        ]
+
+        for inspection in overdue:
             obj = await object_service.get_object_by_id(inspection.object_id)
             if obj is None:
                 continue
 
-            kind = NotificationService.reminder_kind(inspection.planned_date, today)
-            if kind is None:
-                continue
+            engineer = await user_service.get_user_by_telegram_id(inspection.engineer_id)
 
-            try:
-                engineer = await user_service.get_user_by_telegram_id(inspection.engineer_id)
-                if engineer is not None:
-                    engineer_message = NotificationService.build_engineer_reminder_message(
-                        obj.name,
-                        inspection.planned_date,
-                        kind,
-                    )
-                    await bot.send_message(engineer.telegram_id, engineer_message)
-                    logger.info(
-                        "Sent reminder to engineer {} for inspection {} ({})",
+            # Уведомление инженеру с кнопками
+            if engineer is not None:
+                try:
+                    await bot.send_message(
                         engineer.telegram_id,
-                        inspection.id,
-                        kind,
+                        f"⏰ <b>Напоминание</b>\n\n"
+                        f"Сегодня у вас проверка объекта <b>{obj.name}</b> "
+                        f"(#{inspection.id}), она ещё не отмечена выполненной.",
+                        reply_markup=get_inspection_action_keyboard(inspection.id),
+                        parse_mode="HTML",
                     )
+                except Exception as exc:
+                    logger.warning("Failed to notify engineer {}: {}", engineer.telegram_id, exc)
 
-                admins = await user_repository.list_admins()
-                admin_message = NotificationService.build_admin_reminder_message(
-                    engineer.username if engineer is not None else "",
-                    obj.name,
-                    inspection.planned_date,
-                    kind,
-                )
-                for admin in admins:
-                    if engineer is not None and admin.telegram_id == engineer.telegram_id:
-                        continue
-                    await bot.send_message(admin.telegram_id, admin_message)
-                    logger.info(
-                        "Sent reminder to admin {} for inspection {} ({})",
+            # Уведомление администратору с кнопками переноса
+            engineer_label = (
+                f"@{engineer.username}"
+                if engineer is not None and engineer.username
+                else "инженер"
+            )
+            admins = await user_repository.list_admins()
+            for admin in admins:
+                if engineer is not None and admin.telegram_id == engineer.telegram_id:
+                    continue
+                try:
+                    await bot.send_message(
                         admin.telegram_id,
-                        inspection.id,
-                        kind,
+                        f"⚠️ <b>Проверка не выполнена</b>\n\n"
+                        f"Проверка #{inspection.id} по объекту <b>{obj.name}</b> "
+                        f"({engineer_label}) до сих пор не выполнена.\n"
+                        f"Перенесите проверку на другой день:",
+                        reply_markup=get_reschedule_keyboard(inspection.id),
+                        parse_mode="HTML",
                     )
-            except Exception as exc:
-                logger.warning("Failed to send reminder for inspection {}: {}", inspection.id, exc)
+                except Exception as exc:
+                    logger.warning("Failed to notify admin {}: {}", admin.telegram_id, exc)

@@ -6,6 +6,4 @@ def get_engineer_reply_keyboard() -> ReplyKeyboardMarkup:
     keyboard.add(KeyboardButton("🧭 Мои объекты"))
     keyboard.add(KeyboardButton("📅 Сегодня"), KeyboardButton("📅 Завтра"))
     keyboard.add(KeyboardButton("📜 История"))
-    keyboard.add(KeyboardButton("✅ Проверка выполнена"))
-    keyboard.add(KeyboardButton("⚠️ Не могу выполнить"))
     return keyboard

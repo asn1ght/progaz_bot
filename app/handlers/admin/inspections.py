@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from aiogram import types
 from aiogram.dispatcher import Dispatcher, FSMContext
@@ -9,9 +9,14 @@ from app.config import settings
 from app.database.models import Inspection, Object
 from app.database.repositories.user_repository import UserRepository
 from app.database.session import AsyncSessionFactory
-from app.keyboards.admin.inspections import get_inspection_menu_keyboard
+from app.keyboards.admin.inspections import (
+    get_inspection_menu_keyboard,
+    get_reschedule_confirm_keyboard,
+    get_reschedule_keyboard,
+)
 from app.keyboards.admin.menu import get_admin_reply_keyboard
 from app.keyboards.admin.objects import get_engineer_selection_keyboard
+from app.loader import bot
 from app.services.inspection_service import InspectionService
 from app.services.object_service import ObjectService
 from app.services.user_service import UserService
@@ -201,6 +206,90 @@ async def back_to_admin_menu(message: types.Message) -> None:
     await message.answer("Главное административное меню", reply_markup=get_admin_reply_keyboard())
 
 
+async def reschedule_callback(callback_query: types.CallbackQuery) -> None:
+    if callback_query.data is None:
+        await callback_query.answer("Некорректные данные.")
+        return
+
+    _, inspection_id_raw, offset_raw = callback_query.data.split(":", 2)
+    try:
+        inspection_id = int(inspection_id_raw)
+        offset = int(offset_raw)
+    except ValueError:
+        await callback_query.answer("Некорректные данные.")
+        return
+
+    new_date = datetime.utcnow().date() + timedelta(days=offset)
+    await callback_query.message.edit_reply_markup()
+    await callback_query.message.answer(
+        f"❓ <b>Подтвердите перенос</b>\n\n"
+        f"Перенести проверку <b>#{inspection_id}</b> на <b>{new_date}</b>?\n"
+        f"Выбранная дата: {new_date}",
+        reply_markup=get_reschedule_confirm_keyboard(inspection_id, new_date),
+        parse_mode="HTML",
+    )
+    await callback_query.answer()
+
+
+async def confirm_reschedule_callback(callback_query: types.CallbackQuery) -> None:
+    if callback_query.data is None:
+        await callback_query.answer("Некорректные данные.")
+        return
+
+    _, inspection_id_raw, date_raw = callback_query.data.split(":", 2)
+    try:
+        inspection_id = int(inspection_id_raw)
+        new_date = date.fromisoformat(date_raw)
+    except ValueError:
+        await callback_query.answer("Некорректные данные.")
+        return
+
+    async with AsyncSessionFactory() as session:
+        from app.database.repositories.inspection_repository import InspectionRepository
+        from app.database.repositories.object_repository import ObjectRepository
+        inspection_repository = InspectionRepository(session)
+        inspection = await inspection_repository.get_by_id(inspection_id)
+
+        if inspection is None:
+            await callback_query.message.edit_reply_markup()
+            await callback_query.message.answer("❌ Проверка не найдена.")
+            await callback_query.answer()
+            return
+
+        inspection.planned_date = new_date
+        await inspection_repository.update(inspection)
+
+        object_repository = ObjectRepository(session)
+        obj = await object_repository.get_by_id(inspection.object_id)
+        obj_name = obj.name if obj else f"#{inspection.object_id}"
+
+        try:
+            from app.services.user_service import UserService
+            user_service = UserService(session)
+            engineer = await user_service.get_user_by_telegram_id(inspection.engineer_id)
+            if engineer is not None:
+                await bot.send_message(
+                    engineer.telegram_id,
+                    f"📅 Проверка #{inspection.id} по объекту {obj_name} перенесена на {new_date}.",
+                )
+        except Exception:
+            pass
+
+    await callback_query.message.edit_reply_markup()
+    await callback_query.message.answer(
+        f"✅ <b>Проверка #{inspection_id} перенесена на {new_date}.</b>\n"
+        f"Инженер уведомлен.",
+        parse_mode="HTML",
+    )
+    await callback_query.answer()
+
+
+async def cancel_reschedule_callback(callback_query: types.CallbackQuery) -> None:
+    await callback_query.message.edit_reply_markup()
+    await callback_query.message.answer("❌ Перенос отменен.")
+    await callback_query.answer()
+
+
 def register_inspection_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(show_inspection_menu, text=["🛠 Проверки"], state="*")
     dp.register_message_handler(list_inspections, text=["📜 Список проверок"], state="*")
@@ -212,3 +301,18 @@ def register_inspection_handlers(dp: Dispatcher) -> None:
         state=InspectionStates.waiting_engineer_id,
     )
     dp.register_message_handler(back_to_admin_menu, text=["⬅️ Назад"], state="*")
+    dp.register_callback_query_handler(
+        reschedule_callback,
+        lambda c: c.data and c.data.startswith("reschedule:") and not c.data.startswith("confirm_reschedule:"),
+        state="*",
+    )
+    dp.register_callback_query_handler(
+        confirm_reschedule_callback,
+        lambda c: c.data and c.data.startswith("confirm_reschedule:"),
+        state="*",
+    )
+    dp.register_callback_query_handler(
+        cancel_reschedule_callback,
+        lambda c: c.data and c.data.startswith("cancel_reschedule:"),
+        state="*",
+    )
