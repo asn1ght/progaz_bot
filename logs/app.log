@@ -1,0 +1,39 @@
+2026-08-13 15:51:40.696 | INFO     | app.config:<module>:61 - Application configuration loaded
+2026-08-13 15:51:41.126 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-DD1254 | context=test.report | user=123 | test failure
+ValueError: test failure
+2026-08-13 15:53:01.841 | INFO     | app.config:<module>:61 - Application configuration loaded
+2026-08-13 15:53:12.820 | INFO     | app.config:<module>:61 - Application configuration loaded
+2026-08-13 15:53:13.224 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-6F8C09 | context=test.report | user=123 | test failure
+ValueError: test failure
+2026-08-13 15:54:04.767 | INFO     | app.config:<module>:70 - Application configuration loaded
+2026-08-13 15:54:05.178 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-95B339 | context=test.report | user=123 | test failure
+ValueError: test failure
+2026-08-13 16:01:02.560 | INFO     | app.config:<module>:70 - Application configuration loaded
+2026-08-13 16:01:03.218 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-5F1E84 | context=live.test.first | user=N/A | live check 1
+ValueError: live check 1
+2026-08-13 16:01:03.757 | INFO     | app.utils.error_reporter:report:219 - Error report ERR-20260813-5F1E84 sent to developer (context=live.test.first)
+2026-08-13 16:01:03.763 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-6BAF33 | context=live.test.first | user=N/A | live check 1
+ValueError: live check 1
+2026-08-13 16:01:03.765 | INFO     | app.utils.error_reporter:report:225 - Error ERR-20260813-6BAF33 suppressed by cooldown (context=live.test.first)
+2026-08-13 16:01:03.776 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-22690E | context=live.test.second | user=N/A | live check 2
+ValueError: live check 2
+2026-08-13 16:01:03.896 | INFO     | app.utils.error_reporter:report:219 - Error report ERR-20260813-22690E sent to developer (context=live.test.second)
+2026-08-13 16:01:04.379 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-DAB845 | context=scheduler.run_evening_checks | user=N/A | scheduler live failure
+RuntimeError: scheduler live failure
+2026-08-13 16:01:04.500 | INFO     | app.utils.error_reporter:report:219 - Error report ERR-20260813-DAB845 sent to developer (context=scheduler.run_evening_checks)
+2026-08-13 16:01:39.368 | INFO     | app.config:<module>:70 - Application configuration loaded
+2026-08-13 16:01:39.790 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-6AA9BC | context=live.test.first | user=N/A | live check 1
+ValueError: live check 1
+2026-08-13 16:01:40.105 | INFO     | app.utils.error_reporter:report:219 - Error report ERR-20260813-6AA9BC sent to developer (context=live.test.first)
+2026-08-13 16:01:40.106 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-6BCC41 | context=live.test.first | user=N/A | live check 1
+ValueError: live check 1
+2026-08-13 16:01:40.107 | INFO     | app.utils.error_reporter:report:225 - Error ERR-20260813-6BCC41 suppressed by cooldown (context=live.test.first)
+2026-08-13 16:01:40.108 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-62EC18 | context=live.test.second | user=N/A | live check 2
+ValueError: live check 2
+2026-08-13 16:01:40.233 | INFO     | app.utils.error_reporter:report:219 - Error report ERR-20260813-62EC18 sent to developer (context=live.test.second)
+2026-08-13 16:01:40.606 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-7A2548 | context=scheduler.run_evening_checks | user=N/A | scheduler live failure
+RuntimeError: scheduler live failure
+2026-08-13 16:01:40.745 | INFO     | app.utils.error_reporter:report:219 - Error report ERR-20260813-7A2548 sent to developer (context=scheduler.run_evening_checks)
+2026-08-13 16:01:40.775 | ERROR    | app.utils.error_reporter:report:206 - Error ERR-20260813-F8C0F6 | context=telegram.update | user=N/A | handler live failure
+RuntimeError: handler live failure
+2026-08-13 16:01:40.884 | INFO     | app.utils.error_reporter:report:219 - Error report ERR-20260813-F8C0F6 sent to developer (context=telegram.update)

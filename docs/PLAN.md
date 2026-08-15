@@ -661,6 +661,54 @@ Docker.
 
 ---
 
+# Доработка: Error Handling (выполнено)
+
+
+## Задачи:
+
+
+[x] Централизованный ErrorReporter (app/utils/error_reporter.py)
+
+
+[x] Уникальные Error ID формата ERR-YYYYMMDD-XXXXXX
+
+
+[x] Глобальный aiogram error handler (app/handlers/errors.py)
+
+
+[x] Безопасное сообщение пользователю с кодом ошибки
+
+
+[x] Технический отчет разработчику в Telegram
+
+
+[x] APScheduler listener на EVENT_JOB_ERROR
+
+
+[x] Защита от spam по fingerprint + ERROR_COOLDOWN_SECONDS
+
+
+[x] Redact секретов (BOT_TOKEN, пароли, API keys)
+
+
+[x] Loguru: файловый лог logs/app.log с rotation/retention/compression
+
+
+[x] Настройки .env: DEVELOPER_CHAT_ID, ERROR_REPORTING_ENABLED, ERROR_COOLDOWN_SECONDS, ENVIRONMENT
+
+
+[x] Unit-тесты системы ошибок (tests/test_error_handling.py)
+
+
+Результат:
+
+
+Все ошибки логируются, разработчик получает отчет без спама,
+пользователь видит только безопасное сообщение с Error ID.
+
+
+---
+
 # Будущие версии
 
 

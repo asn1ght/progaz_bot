@@ -423,7 +423,94 @@ README.md
 
 docs/
 
-17. Правила разработки
+17. Error Handling Architecture
+
+Назначение:
+
+Централизованная система обработки ошибок для:
+
+Telegram handlers;
+Services;
+Database / SQLAlchemy;
+APScheduler background jobs.
+
+Компоненты:
+
+app/utils/error_reporter.py
+
+ErrorReporter:
+
+генерация уникального Error ID (ERR-YYYYMMDD-XXXXXX);
+построение технического отчета;
+запись каждой ошибки в Loguru (уровень ERROR);
+отправка отчета разработчику в Telegram;
+защита от повторной отправки (cooldown ERROR_COOLDOWN_SECONDS);
+redact секретов (BOT_TOKEN, пароли, API keys) перед отправкой.
+
+app/handlers/errors.py
+
+Глобальный aiogram error handler:
+
+dp.register_errors_handler();
+
+перехватывает необработанные исключения из handlers;
+
+пользователю — только безопасное сообщение с Error ID;
+
+разработчику — полный технический отчет.
+
+app/scheduler/setup.py
+
+APScheduler listener:
+
+EVENT_JOB_ERROR;
+
+каждая ошибка job попадает в ErrorReporter;
+
+scheduler не падает.
+
+app/config.py
+
+Настройки:
+
+DEVELOPER_CHAT_ID;
+ERROR_REPORTING_ENABLED;
+ERROR_COOLDOWN_SECONDS;
+ENVIRONMENT.
+
+Loguru:
+
+stderr + logs/app.log;
+
+rotation 10 MB;
+retention 30 days;
+compression zip.
+
+Поток ошибки:
+
+Exception
+
+→ aiogram errors handler / APScheduler listener
+
+→ ErrorReporter
+
+→ Loguru (всегда)
+
+→ Telegram разработчику (с cooldown)
+
+→ Пользователь: безопасное сообщение с Error ID
+
+Правила:
+
+ErrorReporter никогда не выбрасывает исключения наружу;
+
+длинные отчеты делятся на части (лимит Telegram);
+
+одинаковые ошибки (fingerprint: тип + context + нормализованное сообщение)
+
+не отправляются чаще одного раза за ERROR_COOLDOWN_SECONDS.
+
+18. Правила разработки
 Новая функция создается так:
 
 Например:

@@ -7,6 +7,7 @@ from app.handlers.admin.registration_review import register_admin_review_handler
 from app.handlers.admin.schedule import register_schedule_handlers
 from app.handlers.engineer.history import register_history_handlers
 from app.handlers.engineer.menu import register_engineer_handlers
+from app.handlers.errors import register_error_handlers
 from app.handlers.start import register_start_handler
 
 
@@ -21,3 +22,4 @@ def register_handlers(dp) -> None:
     register_inspection_handlers(dp)
     register_invoice_handlers(dp)
     register_schedule_handlers(dp)
+    register_error_handlers(dp)
